@@ -10189,20 +10189,32 @@
             let pid = null;
             let offX = 0;
             let offY = 0;
+            let cachedHeaderH = 48;
+            let cachedVW = window.innerWidth;
+            let cachedVH = window.innerHeight;
+            let cachedW = 0;
+            let cachedH = 0;
+            const pad = 8;
+            const updateCache = () => {
+                cachedHeaderH = typeof nowCSSVarPx === "function" ? nowCSSVarPx("--header-h", 48) : 48;
+                cachedVW = window.innerWidth;
+                cachedVH = window.innerHeight;
+                const r = dock.getBoundingClientRect();
+                cachedW = r.width;
+                cachedH = r.height;
+            };
             const clampPos = (x, y) => {
-                const pad = 6;
-                const w = dock.offsetWidth || dock.getBoundingClientRect().width;
-                const h = dock.offsetHeight || dock.getBoundingClientRect().height;
-                x = Math.max(pad, Math.min(window.innerWidth - w - pad, x));
-                y = Math.max(pad, Math.min(window.innerHeight - h - pad, y));
-                return {
-                    x: x,
-                    y: y
-                };
+                // O(1) calculation using cached values to prevent Layout Thrashing
+                x = Math.max(pad, Math.min(cachedVW - cachedW - pad, x));
+                y = Math.max(cachedHeaderH + pad, Math.min(cachedVH - cachedH - pad, y));
+                return { x, y };
             };
             head.addEventListener("pointerdown", e => {
                 if (e.pointerType === "mouse" && e.button !== 0) return;
                 if (e.target.closest(".islandBtn, .islandBtns, .islandResizeHandle")) return;
+                
+                updateCache();
+                
                 const r = dock.getBoundingClientRect();
                 offX = e.clientX - r.left;
                 offY = e.clientY - r.top;
@@ -10234,6 +10246,7 @@
                 } catch {}
                 pid = null;
             };
+
             window.addEventListener("pointerup", end, {
                 passive: true
             });
