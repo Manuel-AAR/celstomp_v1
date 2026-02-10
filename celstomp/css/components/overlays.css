@@ -461,16 +461,19 @@
 /* Layer Controls */
 .layerControls{
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin: 8px 0;
+  min-width: 0;
 }
 
 /* Palette Controls */
 .paletteControls{
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid rgba(255,255,255,0.12);
+  min-width: 0;
 }
-

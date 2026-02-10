@@ -2,7 +2,7 @@
     "use strict";
     function isClipEligibleMainLayer(kindOrType) {
         const k = String(kindOrType || "").toLowerCase();
-        return k === "line" || k === "shade" || k === "color";
+        return k === "line" || k === "shade" || k === "color" || k === "sketch";
     }
     const _clipWork = document.createElement("canvas");
     const _clipWorkCtx = _clipWork.getContext("2d");
@@ -727,11 +727,39 @@
             FILL: 0,
             COLOR: 1,
             SHADE: 2,
-            LINE: 3
+            LINE: 3,
+            SKETCH: 4
         };
-        const RENDER_ORDER = [ LAYER.FILL, LAYER.COLOR, LAYER.SHADE, LAYER.LINE ];
-        const LAYERS_COUNT = 4;
+        const MAIN_LAYERS = [ LAYER.FILL, LAYER.COLOR, LAYER.SHADE, LAYER.LINE, LAYER.SKETCH ];
+        const DEFAULT_MAIN_LAYER_ORDER = [ LAYER.FILL, LAYER.COLOR, LAYER.SHADE, LAYER.LINE, LAYER.SKETCH ];
+        const LAYERS_COUNT = 5;
         const PAPER_LAYER = -1;
+        let mainLayerOrder = DEFAULT_MAIN_LAYER_ORDER.slice();
+        function normalizeMainLayerOrder(order) {
+            if (!Array.isArray(order)) return DEFAULT_MAIN_LAYER_ORDER.slice();
+            const seen = new Set;
+            const out = [];
+            for (const raw of order) {
+                const n = Number(raw);
+                if (!Number.isFinite(n)) continue;
+                if (!MAIN_LAYERS.includes(n)) continue;
+                if (seen.has(n)) continue;
+                seen.add(n);
+                out.push(n);
+            }
+            for (const L of DEFAULT_MAIN_LAYER_ORDER) {
+                if (!seen.has(L)) out.push(L);
+            }
+            return out;
+        }
+        function mainLayersTopToBottom() {
+            return mainLayerOrder.slice().reverse();
+        }
+        function layerBelowInOrder(L) {
+            const i = mainLayerOrder.indexOf(Number(L));
+            if (i <= 0) return null;
+            return mainLayerOrder[i - 1];
+        }
         let layers = new Array(LAYERS_COUNT).fill(0).map(() => ({
             name: "",
             opacity: 1,
@@ -744,6 +772,7 @@
         layers[LAYER.LINE].name = "LINE";
         layers[LAYER.SHADE].name = "SHADE";
         layers[LAYER.COLOR].name = "COLOR";
+        layers[LAYER.SKETCH].name = "SKETCH";
         layers[LAYER.FILL].name = "FILL";
         let activeLayer = LAYER.LINE;
         let activeSubColor = new Array(LAYERS_COUNT).fill("#000000");
@@ -1633,11 +1662,11 @@
             return mainLayerHasContent(L, F);
         }
         function hasCel(F) {
-            return mainLayerHasContent(LAYER.LINE, F) || mainLayerHasContent(LAYER.SHADE, F) || mainLayerHasContent(LAYER.COLOR, F) || mainLayerHasContent(LAYER.FILL, F);
+            return MAIN_LAYERS.some(L => mainLayerHasContent(L, F));
         }
         function drawExactCel(ctx, idx) {
             ensureClipBuffers(contentW, contentH);
-            for (const L of RENDER_ORDER) {
+            for (const L of mainLayerOrder) {
                 const layer = layers[L];
                 if (!layer) continue;
                 const op = layer.opacity ?? 1;
@@ -1645,8 +1674,8 @@
                 const srcCanvases = canvasesWithContentForMainLayerFrame(L, idx);
                 if (!srcCanvases.length) continue;
                 const wantsClip = !!layer.clipToBelow && isClipEligibleMainLayer(layer.name);
-                const belowL = Number(L) - 1;
-                if (!wantsClip || L === LAYER.FILL || belowL < 0 || !layers?.[belowL]) {
+                const belowL = layerBelowInOrder(L);
+                if (!wantsClip || belowL == null || !layers?.[belowL]) {
                     ctx.save();
                     ctx.globalAlpha *= op;
                     for (const off of srcCanvases) ctx.drawImage(off, 0, 0);
@@ -1749,13 +1778,39 @@
         }
         function swatchContainerIdForLayer(L) {
             if (L === PAPER_LAYER) return "swatches-paper";
+            if (L === LAYER.SKETCH) return "swatches-sketch";
             if (L === LAYER.LINE) return "swatches-line";
             if (L === LAYER.SHADE) return "swatches-shade";
             if (L === LAYER.COLOR) return "swatches-color";
             return "swatches-fill";
         }
+        function layerRadioIdForLayer(L) {
+            if (L === PAPER_LAYER) return "bt-paper";
+            if (L === LAYER.SKETCH) return "bt-sketch-layer";
+            if (L === LAYER.LINE) return "bt-line";
+            if (L === LAYER.SHADE) return "bt-color";
+            if (L === LAYER.COLOR) return "bt-sketch";
+            return "bt-fill";
+        }
+        function layerValueForLayer(L) {
+            if (L === PAPER_LAYER) return "paper";
+            if (L === LAYER.SKETCH) return "sketch";
+            if (L === LAYER.LINE) return "line";
+            if (L === LAYER.SHADE) return "shade";
+            if (L === LAYER.COLOR) return "color";
+            return "fill";
+        }
+        function layerFromValue(val) {
+            if (val === "paper") return PAPER_LAYER;
+            if (val === "sketch") return LAYER.SKETCH;
+            if (val === "line") return LAYER.LINE;
+            if (val === "shade") return LAYER.SHADE;
+            if (val === "color") return LAYER.COLOR;
+            if (val === "fill") return LAYER.FILL;
+            return LAYER.LINE;
+        }
         function setLayerRadioChecked(L) {
-            const id = L === PAPER_LAYER ? "bt-paper" : L === LAYER.LINE ? "bt-line" : L === LAYER.SHADE ? "bt-color" : L === LAYER.COLOR ? "bt-sketch" : "bt-fill";
+            const id = layerRadioIdForLayer(L);
             const r = document.getElementById(id);
             if (r) r.checked = true;
         }
@@ -1791,6 +1846,7 @@
         let _swatchPtrDrag = null;
         function _swatchHostLayer(host) {
             const id = host?.id || "";
+            if (id === "swatches-sketch") return LAYER.SKETCH;
             if (id === "swatches-line") return LAYER.LINE;
             if (id === "swatches-shade") return LAYER.SHADE;
             if (id === "swatches-color") return LAYER.COLOR;
@@ -2318,7 +2374,7 @@
                 const n = Number(onlyLayer);
                 if (Number.isFinite(n)) onlyLayer = n;
             }
-            const todo = onlyLayer === null ? [ LAYER.FILL, LAYER.COLOR, LAYER.SHADE, LAYER.LINE ] : [ onlyLayer ];
+            const todo = onlyLayer === null ? mainLayerOrder.slice() : [ onlyLayer ];
             for (const L of todo) {
                 const host = document.getElementById(swatchContainerIdForLayer(L));
                 if (!host) continue;
@@ -3096,7 +3152,7 @@
                 if (eligible) {
                     const on = !!layers[L].clipToBelow;
                     if (chk) chk.textContent = on ? "☑" : "☐";
-                    const hasBelow = Number(L) > Number(LAYER.FILL);
+                    const hasBelow = layerBelowInOrder(L) != null;
                     clipBtn.disabled = !hasBelow;
                     clipBtn.title = hasBelow ? "Clip this layer to the alpha of the layer below" : "No layer below to clip to";
                 }
@@ -3533,7 +3589,7 @@
                     localStorage.removeItem(ISLAND_POS_KEY);
                 } catch {}
                 island.style.left = "18px";
-                island.style.top = "76px";
+                island.style.top = "calc(var(--header-h) + 28px)";
             });
         }
         function wireIslandIcons(toolSegEl) {
@@ -3556,6 +3612,7 @@
             }
         }
         const visBtnByLayer = new Map;
+        const layerMoveCtrlsByLayer = new Map;
         function layerIsHidden(L) {
             if (L === PAPER_LAYER) return false;
             return (layers[L]?.opacity ?? 1) <= 0;
@@ -3569,6 +3626,88 @@
             btn.title = hidden ? "Show layer" : "Hide layer";
             btn.setAttribute("aria-pressed", hidden ? "true" : "false");
         }
+        function getLayerRowElements(L) {
+            const id = layerRadioIdForLayer(L);
+            const input = document.getElementById(id);
+            const label = input ? input.closest("label") || document.querySelector(`label[for="${id}"]`) || input.parentElement : null;
+            return {
+                input: input,
+                label: label
+            };
+        }
+        function applyLayerSegOrder() {
+            const seg = document.getElementById("layerSeg");
+            if (!seg) return;
+            const topToBottom = mainLayersTopToBottom();
+            const ordered = topToBottom.concat(PAPER_LAYER);
+            for (const L of ordered) {
+                const row = getLayerRowElements(L);
+                if (!row?.input || !row?.label) continue;
+                seg.appendChild(row.input);
+                seg.appendChild(row.label);
+            }
+        }
+        function moveLayerInList(L, dir) {
+            if (L === PAPER_LAYER) return;
+            const ui = mainLayersTopToBottom();
+            const idx = ui.indexOf(L);
+            if (idx < 0) return;
+            const next = idx + dir;
+            if (next < 0 || next >= ui.length) return;
+            [ ui[idx], ui[next] ] = [ ui[next], ui[idx] ];
+            mainLayerOrder = normalizeMainLayerOrder(ui.slice().reverse());
+            applyLayerSegOrder();
+            wireLayerVisButtons();
+            renderAll();
+            markProjectDirty();
+        }
+        function updateLayerMoveButtons() {
+            const ui = mainLayersTopToBottom();
+            for (let i = 0; i < ui.length; i++) {
+                const L = ui[i];
+                const refs = layerMoveCtrlsByLayer.get(L);
+                if (!refs) continue;
+                refs.up.disabled = i === 0;
+                refs.down.disabled = i === ui.length - 1;
+                refs.up.title = refs.up.disabled ? "Already at top" : "Move layer up";
+                refs.down.title = refs.down.disabled ? "Already at bottom" : "Move layer down";
+            }
+        }
+        function ensureLayerMoveControls(label, L) {
+            if (!label || L === PAPER_LAYER) return;
+            const existing = label.querySelector(".layerMoveControls");
+            if (existing) return;
+            const wrap = document.createElement("span");
+            wrap.className = "layerMoveControls";
+            const up = document.createElement("button");
+            up.type = "button";
+            up.className = "layerMoveBtn";
+            up.textContent = "▲";
+            up.setAttribute("aria-label", "Move layer up");
+            up.addEventListener("click", e => {
+                e.preventDefault();
+                e.stopPropagation();
+                moveLayerInList(L, -1);
+            });
+            const down = document.createElement("button");
+            down.type = "button";
+            down.className = "layerMoveBtn";
+            down.textContent = "▼";
+            down.setAttribute("aria-label", "Move layer down");
+            down.addEventListener("click", e => {
+                e.preventDefault();
+                e.stopPropagation();
+                moveLayerInList(L, 1);
+            });
+            wrap.appendChild(up);
+            wrap.appendChild(down);
+            const sw = label.querySelector(".layerSwatches");
+            if (sw) label.insertBefore(wrap, sw); else label.appendChild(wrap);
+            layerMoveCtrlsByLayer.set(L, {
+                up: up,
+                down: down
+            });
+        }
         function injectVisBtn(radioId, L) {
             const input = document.getElementById(radioId);
             if (!input) return;
@@ -3576,6 +3715,8 @@
             if (!label) return;
             const existing = label.querySelector(".visBtn");
             if (existing) {
+                label.dataset.layerRow = String(L);
+                ensureLayerMoveControls(label, L);
                 visBtnByLayer.set(L, existing);
                 updateVisBtn(L);
                 return;
@@ -3594,6 +3735,7 @@
             });
             label.insertBefore(btn, label.firstChild);
             label.dataset.layerRow = String(L);
+            ensureLayerMoveControls(label, L);
             if (isClipEligibleMainLayer(layers?.[L]?.name)) {
                 let badge = label.querySelector(".clipBadge");
                 if (!badge) {
@@ -3622,20 +3764,25 @@
             updateVisBtn(L);
         }
         function wireLayerVisButtons() {
+            applyLayerSegOrder();
             injectVisBtn("bt-paper", PAPER_LAYER);
             injectVisBtn("bt-fill", LAYER.FILL);
             injectVisBtn("bt-sketch", LAYER.COLOR);
             injectVisBtn("bt-color", LAYER.SHADE);
             injectVisBtn("bt-line", LAYER.LINE);
+            injectVisBtn("bt-sketch-layer", LAYER.SKETCH);
             updateVisBtn(LAYER.FILL);
             updateVisBtn(LAYER.COLOR);
             updateVisBtn(LAYER.SHADE);
             updateVisBtn(LAYER.LINE);
+            updateVisBtn(LAYER.SKETCH);
             try {
                 updateLayerClipBadge(LAYER.COLOR);
                 updateLayerClipBadge(LAYER.SHADE);
                 updateLayerClipBadge(LAYER.LINE);
+                updateLayerClipBadge(LAYER.SKETCH);
             } catch {}
+            updateLayerMoveButtons();
         }
         function clearCelAt(L, F) {
             if (L === PAPER_LAYER) return;
@@ -4687,7 +4834,7 @@
                 }
                 return out;
             }
-            const layersToErase = layer === -1 ? [ LAYER.FILL, LAYER.COLOR, LAYER.SHADE, LAYER.LINE ] : [ layer ];
+            const layersToErase = layer === -1 ? MAIN_LAYERS.slice() : [ layer ];
             let didAny = false;
             const qx = new Uint32Array(w * h);
             const qy = new Uint32Array(w * h);
@@ -8355,6 +8502,7 @@
                 playSnapped: playSnapped,
                 keepOnionWhilePlaying: keepOnionWhilePlaying,
                 keepTransWhilePlaying: keepTransWhilePlaying,
+                mainLayerOrder: mainLayerOrder.slice(),
                 layerColors: Array.isArray(layerColorMem) ? layerColorMem.slice() : [],
                 activeLayer: activeLayer,
                 activeSubColor: Array.isArray(activeSubColor) ? activeSubColor.slice() : activeSubColor,
@@ -8425,6 +8573,7 @@
                     playSnapped = !!data.playSnapped;
                     keepOnionWhilePlaying = !!data.keepOnionWhilePlaying;
                     keepTransWhilePlaying = !!data.keepTransWhilePlaying;
+                    mainLayerOrder = normalizeMainLayerOrder(data.mainLayerOrder);
                     if (data.oklchDefault && typeof data.oklchDefault === "object") {
                         const L = clamp(parseFloat(data.oklchDefault.L) || 0, 0, 100);
                         const C = clamp(parseFloat(data.oklchDefault.C) || 0, 0, 1);
@@ -8460,6 +8609,7 @@
                     layers[LAYER.LINE].name = "LINE";
                     layers[LAYER.SHADE].name = "SHADE";
                     layers[LAYER.COLOR].name = "COLOR";
+                    layers[LAYER.SKETCH].name = "SKETCH";
                     layers[LAYER.FILL].name = "FILL";
                     try {
                         if (hasTimeline && typeof buildTimeline === "function") buildTimeline();
@@ -8578,6 +8728,9 @@
                     } catch {}
                     try {
                         for (let L = 0; L < LAYERS_COUNT; L++) renderLayerSwatches?.(L);
+                    } catch {}
+                    try {
+                        wireLayerVisButtons?.();
                     } catch {}
                     try {
                         renderAll?.();
@@ -9523,7 +9676,7 @@
                 updateHUD();
                 return;
             }
-            activeLayer = val === "shade" ? LAYER.SHADE : val === "color" ? LAYER.COLOR : val === "fill" ? LAYER.FILL : LAYER.LINE;
+            activeLayer = layerFromValue(val);
             const hex = activeSubColor[activeLayer] || "#000000";
             currentColor = hex;
             try {
