@@ -960,27 +960,20 @@
             const val = document.querySelector('input[name="btype"]:checked')?.value || "line";
             if (val === "paper") {
                 activeLayer = PAPER_LAYER;
-                renderLayerSwatches();
-                queueUpdateHud();
+                syncActiveLayerColorUI({
+                    layer: PAPER_LAYER,
+                    redrawSwatches: true,
+                    updateHud: true
+                });
                 return;
             }
-            activeLayer = layerFromValue(val);
-            const hex = activeSubColor[activeLayer] || "#000000";
-            currentColor = hex;
-            try {
-                setColorSwatch();
-            } catch {}
-            renderLayerSwatches();
-            applyRememberedColorForLayer(activeLayer);
-            try {
-                // getRememberedColorForLayer DNE? not sure
-                const c = getRememberedColorForLayer?.(activeLayer) || currentColor || "#000000";
-                setCurrentColorHex(c, {
-                    remember: false
-                });
-            } catch {
-                drawHSVWheel();
-            }
+            const nextLayer = layerFromValue(val);
+            syncActiveLayerColorUI({
+                layer: nextLayer,
+                remember: false,
+                redrawSwatches: true,
+                updateHud: true
+            });
         });
         saveOklchDefaultBtn?.addEventListener("click", () => {
             const L = clamp(parseFloat(defLInput?.value) || 0, 0, 100);

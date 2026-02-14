@@ -566,8 +566,9 @@ let draggingClip = null;
 function frameFromClientX(clientX) {
   const playRow = timelineTable.querySelector("tr.playhead-row");
   if (!playRow) return 0;
-  const rect = playRow.getBoundingClientRect();
-  const x = clamp(clientX - rect.left + timelineScroll.scrollLeft, 0, playRow.scrollWidth);
+  const scrollRect = timelineScroll.getBoundingClientRect();
+  const xInContent = clientX - scrollRect.left + timelineScroll.scrollLeft;
+  const x = clamp(xInContent, 0, playRow.scrollWidth);
   const firstW = playRow.children[0]?.getBoundingClientRect().width || 200;
   const cellW = playRow.children[1]?.getBoundingClientRect().width || nowCSSVarPx("--frame-w", 24) || 24;
   const raw = clamp(Math.floor((x - firstW) / cellW), 0, totalFrames - 1);

@@ -44,6 +44,14 @@ function _jumpToActionContext(L, F) {
     currentFrame = F;
     activeLayer = L;
     try {
+        syncActiveLayerColorUI?.({
+            layer: L,
+            remember: false,
+            redrawSwatches: true,
+            updateHud: true
+        });
+    } catch {}
+    try {
         queueRenderAll();
     } catch {}
 }

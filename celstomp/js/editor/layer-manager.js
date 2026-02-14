@@ -88,6 +88,67 @@ function applyRememberedColorForLayer(L = activeLayer) {
   setColorSwatch();
 }
 
+function syncActiveLayerColorUI({
+  layer: layer = activeLayer,
+  color: color = null,
+  remember: remember = false,
+  redrawSwatches: redrawSwatches = true,
+  updateHud: updateHud = true
+} = {}) {
+  if (layer === PAPER_LAYER) {
+      if (redrawSwatches) {
+          try {
+              renderLayerSwatches();
+          } catch {}
+      }
+      if (updateHud) {
+          try {
+              queueUpdateHud?.();
+          } catch {}
+      }
+      return;
+  }
+  const fromActive = Array.isArray(activeSubColor) ? activeSubColor[layer] : null;
+  const fallback = typeof rememberedColorForLayer === "function" ? rememberedColorForLayer(layer) : "#000000";
+  const next = swatchColorKey(color || fromActive || fallback || "#000000");
+  if (Array.isArray(activeSubColor)) activeSubColor[layer] = next;
+  activeLayer = layer;
+  if (typeof setCurrentColorHex === "function") {
+      setCurrentColorHex(next, {
+          remember: remember
+      });
+  } else {
+      currentColor = next;
+      try {
+          setColorSwatch?.();
+      } catch {}
+      try {
+          setHSVPreviewBox?.();
+      } catch {}
+      if (remember) {
+          try {
+              rememberCurrentColorForLayer?.(layer);
+          } catch {}
+      }
+      try {
+          drawHSVWheel?.();
+      } catch {}
+  }
+  try {
+      setLayerRadioChecked(layer);
+  } catch {}
+  if (redrawSwatches) {
+      try {
+          renderLayerSwatches();
+      } catch {}
+  }
+  if (updateHud) {
+      try {
+          queueUpdateHud?.();
+      } catch {}
+  }
+}
+
 function setColorSwatch() {
   const brushSwatch = $("brushSwatch");
   const brushHexEl = $("brushHex");
@@ -278,20 +339,13 @@ function renderLayerSwatches(onlyLayer = null) {
               e.preventDefault();
               e.stopPropagation();
               const k = swatchColorKey(readKey());
-              activeLayer = L;
-              if (Array.isArray(activeSubColor)) activeSubColor[L] = k;
-              currentColor = k;
-              try {
-                  setColorSwatch?.();
-              } catch {}
-              try {
-                  setHSVPreviewBox?.();
-              } catch {}
-              setLayerRadioChecked(L);
-              try {
-                  queueUpdateHud?.();
-              } catch {}
-              renderLayerSwatches();
+              syncActiveLayerColorUI({
+                  layer: L,
+                  color: k,
+                  remember: true,
+                  redrawSwatches: true,
+                  updateHud: true
+              });
           });
           btn.addEventListener("contextmenu", e => {
               e.preventDefault();
