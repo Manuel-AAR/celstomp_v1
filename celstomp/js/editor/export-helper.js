@@ -39,20 +39,14 @@ function canvasesWithContentForMainLayerFrame(L, F) {
 async function drawFrameTo(ctx, i, opts = {}) {
   const forceHoldOff = !!opts.forceHoldOff;
   const transparent = !!opts.transparent;
-  const ew = Math.max(1, Number.isFinite(frameW) ? frameW : contentW);
-  const eh = Math.max(1, Number.isFinite(frameH) ? frameH : contentH);
-  const ex = Number.isFinite(frameX) ? frameX : 0;
-  const ey = Number.isFinite(frameY) ? frameY : 0;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = "source-over";
-  ctx.clearRect(0, 0, ew, eh);
+  ctx.clearRect(0, 0, contentW, contentH);
   if (!transparent) {
       ctx.fillStyle = canvasBgColor;
-      ctx.fillRect(0, 0, ew, eh);
+      ctx.fillRect(0, 0, contentW, contentH);
   }
-  ctx.save();
-  ctx.translate(-ex, -ey);
   if (hasCel(i)) drawExactCel(ctx, i); else {
       const p = nearestPrevCelIndex(i);
       if (p >= 0) {
@@ -61,7 +55,6 @@ async function drawFrameTo(ctx, i, opts = {}) {
           ctx.globalAlpha = 1;
       }
   }
-  ctx.restore();
 }
 
 function pickMP4Mime() {
@@ -80,11 +73,9 @@ async function withTransparencyHoldForcedOffAsync(fn) {
   }
 }
 async function exportClip(mime, ext) {
-  const ew = Math.max(1, Number.isFinite(frameW) ? frameW : contentW);
-  const eh = Math.max(1, Number.isFinite(frameH) ? frameH : contentH);
   const cc = document.createElement("canvas");
-  cc.width = ew;
-  cc.height = eh;
+  cc.width = contentW;
+  cc.height = contentH;
   const cctx = cc.getContext("2d");
   cctx.imageSmoothingEnabled = !!antiAlias;
   const stream = cc.captureStream(fps);
@@ -164,8 +155,6 @@ async function exportGif({fps: fpsLocal, transparent: transparent, loop: loop}) 
       alert("GIF export unavailable: encoder library not loaded.");
       return;
   }
-  const ew = Math.max(1, Number.isFinite(frameW) ? frameW : contentW);
-  const eh = Math.max(1, Number.isFinite(frameH) ? frameH : contentH);
   const start = clipStart;
   const end = clipEnd;
   const count = Math.max(0, end - start + 1);
@@ -173,7 +162,7 @@ async function exportGif({fps: fpsLocal, transparent: transparent, loop: loop}) 
       alert("No frames to export.");
       return;
   }
-  const totalPixels = ew * eh * count;
+  const totalPixels = contentW * contentH * count;
   if (totalPixels > 4e7) {
       alert("GIF export range is too large. Shorten clip range or canvas size.");
       return;
@@ -182,13 +171,13 @@ async function exportGif({fps: fpsLocal, transparent: transparent, loop: loop}) 
   const estSize = Math.max(1048576, Math.ceil(totalPixels * 1.4 + count * 256));
   const out = new Uint8Array(estSize);
   const palette = buildGifPalette();
-  const writer = new GifWriter(out, ew, eh, {
+  const writer = new GifWriter(out, contentW, contentH, {
       palette: palette,
       loop: loop ? 0 : null
   });
   const cc = document.createElement("canvas");
-  cc.width = ew;
-  cc.height = eh;
+  cc.width = contentW;
+  cc.height = contentH;
   const cctx = cc.getContext("2d", {
       willReadFrequently: true,
       alpha: true
@@ -201,9 +190,9 @@ async function exportGif({fps: fpsLocal, transparent: transparent, loop: loop}) 
               forceHoldOff: true,
               transparent: transparent
           });
-          const img = cctx.getImageData(0, 0, ew, eh);
+          const img = cctx.getImageData(0, 0, contentW, contentH);
           const indexed = imageDataToGifIndexes(img.data, transparent);
-          writer.addFrame(0, 0, ew, eh, indexed, {
+          writer.addFrame(0, 0, contentW, contentH, indexed, {
               delay: delayCs,
               disposal: 1,
               transparent: transparent ? 0 : null
@@ -302,8 +291,8 @@ const imgSeqExporter = window.CelstompImgSeqExport?.createExporter?.({
       totalFrames: totalFrames,
       fps: fps,
       seconds: seconds,
-      contentW: Math.max(1, Number.isFinite(frameW) ? frameW : contentW),
-      contentH: Math.max(1, Number.isFinite(frameH) ? frameH : contentH),
+      contentW: contentW,
+      contentH: contentH,
       antiAlias: antiAlias
   }),
   drawFrameTo: drawFrameTo,
@@ -505,15 +494,8 @@ async function buildProjectSnapshot() {
   }
   return {
       version: 2,
-      projectName: String(projectName || "Untitled Project"),
-      contentW: frameW,
-      contentH: frameH,
-      workspaceW: contentW,
-      workspaceH: contentH,
-      frameW: frameW,
-      frameH: frameH,
-      frameX: frameX,
-      frameY: frameY,
+      contentW: contentW,
+      contentH: contentH,
       fps: fps,
       seconds: seconds,
       totalFrames: totalFrames,
@@ -558,8 +540,7 @@ async function saveProject() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  const safeName = String(projectName || "Untitled Project").replace(/[^a-z0-9\-_ ]+/gi, "").trim().replace(/\s+/g, "_") || "celstomp_project";
-  a.download = `${safeName}.json`;
+  a.download = "celstomp_project.json";
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -585,15 +566,10 @@ function loadProject(file, options = {}) {
           fps = clamp(parseInt(data.fps || 24, 10), 1, 120);
           seconds = clamp(parseInt(data.seconds || 5, 10), 1, 600);
           totalFrames = fps * seconds;
-          projectName = String(data.projectName || projectName || "Untitled Project").trim() || "Untitled Project";
-          const loadedFrameW = clamp(parseInt(data.frameW ?? data.contentW ?? frameW, 10), 16, 8192);
-          const loadedFrameH = clamp(parseInt(data.frameH ?? data.contentH ?? frameH, 10), 16, 8192);
-          frameW = loadedFrameW;
-          frameH = loadedFrameH;
-          contentW = clamp(parseInt(data.workspaceW ?? contentW, 10), loadedFrameW + 192, 8192);
-          contentH = clamp(parseInt(data.workspaceH ?? contentH, 10), loadedFrameH + 192, 8192);
-          frameX = clamp(parseInt(data.frameX ?? Math.floor((contentW - frameW) / 2), 10), 0, Math.max(0, contentW - frameW));
-          frameY = clamp(parseInt(data.frameY ?? Math.floor((contentH - frameH) / 2), 10), 0, Math.max(0, contentH - frameH));
+          if (Number.isFinite(data.contentW) && Number.isFinite(data.contentH)) {
+              contentW = clamp(parseInt(data.contentW, 10), 16, 8192);
+              contentH = clamp(parseInt(data.contentH, 10), 16, 8192);
+          }
           currentFrame = clamp(parseInt(data.currentFrame ?? 0, 10), 0, totalFrames - 1);
           clipStart = clamp(parseInt(data.clipStart ?? 0, 10), 0, totalFrames - 1);
           clipEnd = clamp(parseInt(data.clipEnd ?? Math.min(totalFrames - 1, fps * 2 - 1), 10), clipStart, totalFrames - 1);
@@ -862,13 +838,9 @@ function loadProject(file, options = {}) {
               markProjectClean("Loaded");
           }
           try {
-              if (typeof setProjectName === "function") setProjectName(projectName, false);
-          } catch {}
-          try {
               options?.onLoaded?.({
                   source: source,
                   fileName: file?.name || null,
-                  projectName: projectName,
                   contentW: contentW,
                   contentH: contentH,
                   totalFrames: totalFrames

@@ -253,10 +253,6 @@ function startStroke(e) {
   const startPt = stabilizePoint(e, x, y);
   x = startPt.x;
   y = startPt.y;
-  if (constrainToFrame) {
-      x = clamp(x, frameX, frameX + frameW);
-      y = clamp(y, frameY, frameY + frameH);
-  }
   if (x < 0 || y < 0 || x > contentW || y > contentH) return;
   if (e.button === 2) {
       startPan(e);
@@ -392,10 +388,6 @@ function continueStroke(e) {
   const movePt = stabilizePoint(e, x, y);
   x = movePt.x;
   y = movePt.y;
-  if (constrainToFrame) {
-      x = clamp(x, frameX, frameX + frameW);
-      y = clamp(y, frameY, frameY + frameH);
-  }
   if (!lastPt) lastPt = {
       x: x,
       y: y
