@@ -741,18 +741,14 @@ function moveSwatchToLayerUnpaired(srcL, srcKey, dstL) {
     if (!sameLayer && wasActiveOnSrc) {
         activeLayer = dstL;
         if (Array.isArray(activeSubColor)) activeSubColor[dstL] = srcKey;
-        currentColor = srcKey;
         try {
-            setLayerRadioChecked(dstL);
-        } catch {}
-        try {
-            setColorSwatch?.();
-        } catch {}
-        try {
-            setHSVPreviewBox?.();
-        } catch {}
-        try {
-            queueUpdateHud?.();
+            syncActiveLayerColorUI?.({
+                layer: dstL,
+                color: srcKey,
+                remember: true,
+                redrawSwatches: false,
+                updateHud: true
+            });
         } catch {}
     }
     renderLayerSwatches(srcL);

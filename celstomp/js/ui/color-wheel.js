@@ -21,6 +21,130 @@ function wheelLocalFromEvent(e) {
         y: y
     };
 }
+
+function getSVTriangleGeom(g) {
+    const triR = Math.floor(g.ringInner * 0.90);
+    const angH = (hsvPick.h - 90) * (Math.PI / 180);
+    const a = {
+        x: Math.cos(angH) * triR,
+        y: Math.sin(angH) * triR
+    };
+    const b = {
+        x: Math.cos(angH + 2 * Math.PI / 3) * triR,
+        y: Math.sin(angH + 2 * Math.PI / 3) * triR
+    };
+    const c = {
+        x: Math.cos(angH + 4 * Math.PI / 3) * triR,
+        y: Math.sin(angH + 4 * Math.PI / 3) * triR
+    };
+    const detT = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
+    return {
+        a: a,
+        b: b,
+        c: c,
+        triR: triR,
+        detT: detT
+    };
+}
+
+function barycentricSV(px, py, tri) {
+    const {a, b, c, detT} = tri;
+    if (!detT) return {
+        l1: 0,
+        l2: 0,
+        l3: 1
+    };
+    const l1 = ((b.y - c.y) * (px - c.x) + (c.x - b.x) * (py - c.y)) / detT;
+    const l2 = ((c.y - a.y) * (px - c.x) + (a.x - c.x) * (py - c.y)) / detT;
+    return {
+        l1: l1,
+        l2: l2,
+        l3: 1 - l1 - l2
+    };
+}
+
+function closestPointOnSegment(px, py, ax, ay, bx, by) {
+    const abx = bx - ax;
+    const aby = by - ay;
+    const den = abx * abx + aby * aby;
+    if (den <= 1e-12) return {
+        x: ax,
+        y: ay
+    };
+    const t = clamp(((px - ax) * abx + (py - ay) * aby) / den, 0, 1);
+    return {
+        x: ax + abx * t,
+        y: ay + aby * t
+    };
+}
+
+function closestPointOnSVTriangle(px, py, tri) {
+    const {a, b, c} = tri;
+    const abx = b.x - a.x;
+    const aby = b.y - a.y;
+    const acx = c.x - a.x;
+    const acy = c.y - a.y;
+    const apx = px - a.x;
+    const apy = py - a.y;
+
+    const d1 = abx * apx + aby * apy;
+    const d2 = acx * apx + acy * apy;
+    if (d1 <= 0 && d2 <= 0) return {
+        x: a.x,
+        y: a.y
+    };
+
+    const bpx = px - b.x;
+    const bpy = py - b.y;
+    const d3 = abx * bpx + aby * bpy;
+    const d4 = acx * bpx + acy * bpy;
+    if (d3 >= 0 && d4 <= d3) return {
+        x: b.x,
+        y: b.y
+    };
+
+    const vc = d1 * d4 - d3 * d2;
+    if (vc <= 0 && d1 >= 0 && d3 <= 0) {
+        const v = d1 / (d1 - d3);
+        return {
+            x: a.x + v * abx,
+            y: a.y + v * aby
+        };
+    }
+
+    const cpx = px - c.x;
+    const cpy = py - c.y;
+    const d5 = abx * cpx + aby * cpy;
+    const d6 = acx * cpx + acy * cpy;
+    if (d6 >= 0 && d5 <= d6) return {
+        x: c.x,
+        y: c.y
+    };
+
+    const vb = d5 * d2 - d1 * d6;
+    if (vb <= 0 && d2 >= 0 && d6 <= 0) {
+        const w = d2 / (d2 - d6);
+        return {
+            x: a.x + w * acx,
+            y: a.y + w * acy
+        };
+    }
+
+    const va = d3 * d6 - d5 * d4;
+    if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) {
+        const p = closestPointOnSegment(px, py, b.x, b.y, c.x, c.y);
+        return {
+            x: p.x,
+            y: p.y
+        };
+    }
+
+    return {
+        x: px,
+        y: py
+    };
+}
+
 function hitTestWheel(x, y) {
     const g = _wheelGeom || computeWheelGeom();
     if (!g) return null;
@@ -30,18 +154,8 @@ function hitTestWheel(x, y) {
 
     if (pickerShape === "triangle") {
         if (dist >= g.ringInner && dist <= g.ringOuter) return "hue";
-        const triR = Math.floor(g.ringInner * 0.90);
-        const angH = (hsvPick.h - 90) * (Math.PI / 180);
-        const x1 = Math.cos(angH) * triR;
-        const y1 = Math.sin(angH) * triR;
-        const x2 = Math.cos(angH + 2 * Math.PI / 3) * triR;
-        const y2 = Math.sin(angH + 2 * Math.PI / 3) * triR;
-        const x3 = Math.cos(angH + 4 * Math.PI / 3) * triR;
-        const y3 = Math.sin(angH + 4 * Math.PI / 3) * triR;
-        const detT = (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3);
-        const l1 = ((y2 - y3) * (dx - x3) + (x3 - x2) * (dy - y3)) / detT;
-        const l2 = ((y3 - y1) * (dx - x3) + (x1 - x3) * (dy - y3)) / detT;
-        const l3 = 1 - l1 - l2;
+        const tri = getSVTriangleGeom(g);
+        const {l1, l2, l3} = barycentricSV(dx, dy, tri);
         if (l1 >= 0 && l2 >= 0 && l3 >= 0) return "sv";
         return null;
     }
@@ -70,25 +184,27 @@ function updateFromSVPoint(x, y) {
     if (pickerShape === "triangle") {
         const dx = x - g.R;
         const dy = y - g.R;
-        const triR = Math.floor(g.ringInner * 0.90);
-        const angH = (hsvPick.h - 90) * (Math.PI / 180);
-        const x1 = Math.cos(angH) * triR;
-        const y1 = Math.sin(angH) * triR;
-        const x2 = Math.cos(angH + 2 * Math.PI / 3) * triR;
-        const y2 = Math.sin(angH + 2 * Math.PI / 3) * triR;
-        const x3 = Math.cos(angH + 4 * Math.PI / 3) * triR;
-        const y3 = Math.sin(angH + 4 * Math.PI / 3) * triR;
-        const detT = (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3);
-        const l1 = ((y2 - y3) * (dx - x3) + (x3 - x2) * (dy - y3)) / detT;
-        const l2 = ((y3 - y1) * (dx - x3) + (x1 - x3) * (dy - y3)) / detT;
-        
-        let cl1 = l1, cl2 = l2, cl3 = 1 - l1 - l2;
-        if (cl1 < 0) { cl1 = 0; cl2 = l2 / (l2 + cl3); cl3 = 1 - cl2; }
-        else if (cl2 < 0) { cl2 = 0; cl1 = cl1 / (cl1 + cl3); cl3 = 1 - cl1; }
-        else if (cl3 < 0) { cl3 = 0; cl1 = cl1 / (cl1 + cl2); cl2 = 1 - cl1; }
-
-        hsvPick.v = cl1 + cl2;
-        hsvPick.s = hsvPick.v > 0.0001 ? (cl1 / hsvPick.v) : 0;
+        const tri = getSVTriangleGeom(g);
+        const baryRaw = barycentricSV(dx, dy, tri);
+        let px = dx;
+        let py = dy;
+        if (baryRaw.l1 < 0 || baryRaw.l2 < 0 || baryRaw.l3 < 0) {
+            const clamped = closestPointOnSVTriangle(dx, dy, tri);
+            px = clamped.x;
+            py = clamped.y;
+        }
+        let {l1, l2, l3} = barycentricSV(px, py, tri);
+        l1 = clamp(l1, 0, 1);
+        l2 = clamp(l2, 0, 1);
+        l3 = clamp(l3, 0, 1);
+        const sum = l1 + l2 + l3;
+        if (sum > 1e-9) {
+            l1 /= sum;
+            l2 /= sum;
+            l3 /= sum;
+        }
+        hsvPick.v = l1 + l2;
+        hsvPick.s = hsvPick.v > 0.0001 ? (l1 / hsvPick.v) : 0;
     } else {
         const sx = clamp((x - g.sqLeft) / g.sqSize, 0, 1);
         const vy = clamp(1 - (y - g.sqTop) / g.sqSize, 0, 1);
